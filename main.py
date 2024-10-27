@@ -1,33 +1,47 @@
-#take file as input.
-# read as text
+from lxml import etree
 
-#variable resourceDict
-# scan through every char / word.
-#identify < save position/index of it
-#if has a "# combo, then assume its a color
-#set flag to indicate color found
-# get the whole expression all the way to end of "
-# save position of the first "#
-#continue
-#identify > save position /  index of it  IF flag true. otherwise continue
+def process_xaml(input_file, output_file):
+    with open(input_file, 'r', encoding='utf-8') as file:
+        xaml_content = file.read()
 
-#if flag true:
-#go to the index position of the first "#
-#save color content inside " "
-#check if color inside resources dictionary (resourceDict)
-#if it is, check resource name for that color
-#set name = that name
-#if not:
-#within <>, search for Name="
-#extract name by saving content inside " "
-#check if name exists in the resource dictionary
-#if so continue adding a number till not found / name doesnt exist
-#set name = that
+    root = etree.fromstring(xaml_content)
 
-# replace text in "" with {StaticResource name}
+    color_resources = {}
 
-#go back to line 4 / continue scanning / iterating
+    def findreplace_colors(element):
+        for attr in element.attrib:
+            value = element.attrib[attr]
 
+            if value.startswith('#'):
+                if value not in color_resources.values():
+                    name = f'Color{len(color_resources)}'
+                    color_resources[name] = value
+                else:
+                    name = [key for key, val in color_resources.items() if val == value][0]
 
-#when finished, check resourceDict
-#create .xaml based on the rsource dictionary
+                element.attrib[attr] = f'{{StaticResource {name}}}'
+
+            if element.tag.endswith('GradientStop'):
+                if value in color_resources.values():
+                    name = [key for key, val in color_resources.items() if val == value][0]
+                    element.attrib[attr] = f'{{Binding Source={{StaticResource {name}}}, Path=Color}}'
+
+        for child in element:
+            findreplace_colors(child)
+
+    findreplace_colors(root)
+
+    resources_str = ""
+    for name, color in color_resources.items():
+        resources_str += f'    <SolidColorBrush x:Key="{name}" Color="{color}" />\n'
+
+    xaml_str = etree.tostring(root, pretty_print=True, encoding='unicode')
+    xaml_str = xaml_str.replace("<Window.Resources>", f"<Window.Resources>\n{resources_str}")
+
+    with open(output_file, 'w', encoding='utf-8') as file:
+        file.write(xaml_str)
+
+input_file = 'markup.xaml'
+output_file = 'updated_markup.xaml'
+
+process_xaml(input_file, output_file)
